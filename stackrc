@@ -1,0 +1,242 @@
+#!/bin/bash
+#
+# stackrc for OpenStack 2025.1 (Caracal)
+#
+
+# Ensure we don't re-source this in the same environment
+[[ -z "$_DEVSTACK_STACKRC" ]] || return 0
+declare -r -g _DEVSTACK_STACKRC=1
+
+# Find the other rc files
+RC_DIR=$(cd $(dirname "${BASH_SOURCE:-$0}") && pwd)
+
+# Source required DevStack functions and globals
+source $RC_DIR/functions
+
+# Set the target branch for stable/2025.1
+TARGET_BRANCH=stable/2025.1
+
+# Cycle trailing projects may use master
+TRAILING_TARGET_BRANCH=master
+
+# Repos without stable branches
+BRANCHLESS_TARGET_BRANCH=master
+
+# Destination path for installation
+DEST=/opt/stack
+
+# Destination for working data
+DATA_DIR=${DEST}/data
+
+# Destination for status files
+SERVICE_DIR=${DEST}/status
+
+# Path for subunit output file
+SUBUNIT_OUTPUT=${DEST}/devstack.subunit
+
+# Determine stack user
+if [[ $EUID -eq 0 ]]; then
+    STACK_USER=stack
+else
+    STACK_USER=$(whoami)
+fi
+
+# Specify region name
+REGION_NAME=${REGION_NAME:-RegionOne}
+
+# Specify region for identity service endpoint
+KEYSTONE_REGION_NAME=${KEYSTONE_REGION_NAME:-$REGION_NAME}
+
+# Specify enabled services
+if ! isset ENABLED_SERVICES ; then
+    # Keystone - required
+    ENABLED_SERVICES=key
+    # Nova services
+    ENABLED_SERVICES+=,n-api,n-cpu,n-cond,n-sch,n-novnc,n-api-meta
+    # Placement service
+    ENABLED_SERVICES+=,placement-api,placement-client
+    # Swift services
+    ENABLED_SERVICES+=,s-proxy,s-object,s-container,s-account
+    # Glance services
+    ENABLED_SERVICES+=,g-api
+    # Cinder services
+    ENABLED_SERVICES+=,c-sch,c-api,c-vol
+    # Neutron with OVN
+    ENABLED_SERVICES+=,ovn-controller,ovn-northd,ovs-vswitchd,ovsdb-server,q-svc,q-ovn-metadata-agent
+    # Horizon
+    ENABLED_SERVICES+=,horizon
+    # Additional services
+    ENABLED_SERVICES+=,rabbit,mysql,etcd3
+fi
+
+# Enable mod_wsgi for services
+ENABLE_HTTPD_MOD_WSGI_SERVICES=True
+
+# Set default Nova APIs
+NOVA_ENABLED_APIS=osapi_compute,metadata
+
+# Cells v2 configuration
+CELLSV2_SETUP=${CELLSV2_SETUP:-superconductor}
+
+# Set Horizon root URL
+HORIZON_APACHE_ROOT="/dashboard"
+
+# Use systemd for service management
+USE_SYSTEMD=True
+USER_UNITS=$(trueorfalse False USER_UNITS)
+if [[ "$USER_UNITS" == "True" ]]; then
+    SYSTEMD_DIR="$HOME/.local/share/systemd/user"
+    SYSTEMCTL="systemctl --user"
+else
+    SYSTEMD_DIR="/etc/systemd/system"
+    SYSTEMCTL="sudo systemctl"
+fi
+
+# Enable Kernel Samepage Merging
+ENABLE_KSM=$(trueorfalse True ENABLE_KSM)
+
+# Passwords from .localrc.password
+if [[ -r $RC_DIR/.localrc.password ]]; then
+    source $RC_DIR/.localrc.password
+fi
+
+# Python 3 configuration
+USE_PYTHON3=True
+ENABLED_PYTHON3_PACKAGES="nova,glance,cinder,uwsgi,openstackclient,openstacksdk"
+PYTHON3_VERSION=${PYTHON3_VERSION:-3.8}
+PYTHON2_VERSION=${PYTHON2_VERSION:-2.7}
+
+# Local overrides
+if [[ -f $RC_DIR/localrc ]]; then
+    source $RC_DIR/localrc
+elif [[ -f $RC_DIR/.localrc.auto ]]; then
+    source $RC_DIR/.localrc.auto
+fi
+
+# Logging configuration
+if [ -t 1 ]; then
+    _LOG_COLOR_DEFAULT=True
+else
+    _LOG_COLOR_DEFAULT=False
+fi
+LOG_COLOR=$(trueorfalse $_LOG_COLOR_DEFAULT LOG_COLOR)
+if [[ "$LOG_COLOR" == "True" ]]; then
+    TPUT_T=
+    if ! [ $TERM ]; then
+        TPUT_T='-T vt100'
+    fi
+    export PS4='+\[$(tput '$TPUT_T' setaf 242)\]$(short_source)\[$(tput '$TPUT_T' sgr0)\] '
+else
+    export PS4='+ $(short_source):   '
+fi
+
+# Identity API version
+IDENTITY_API_VERSION=3
+ENABLE_IDENTITY_V2=False
+
+# Virtual environments
+USE_VENV=$(trueorfalse False USE_VENV)
+ADDITIONAL_VENV_PACKAGES=${ADITIONAL_VENV_PACKAGES:-""}
+
+# Database query logging
+DATABASE_QUERY_LOGGING=$(trueorfalse False DATABASE_QUERY_LOGGING)
+
+# Git timeout
+GIT_TIMEOUT=${GIT_TIMEOUT:-0}
+
+# WSGI mode
+WSGI_MODE=${WSGI_MODE:-uwsgi}
+
+# Repositories
+GIT_BASE=${GIT_BASE:-https://opendev.org}
+
+# Requirements repository
+REQUIREMENTS_DIR=$DEST/requirements
+REQUIREMENTS_REPO=${REQUIREMENTS_REPO:-${GIT_BASE}/openstack/requirements.git}
+REQUIREMENTS_BRANCH=${REQUIREMENTS_BRANCH:-$TARGET_BRANCH}
+
+# Tempest repository
+TEMPEST_REPO=${TEMPEST_REPO:-${GIT_BASE}/openstack/tempest.git}
+TEMPEST_BRANCH=${TEMPEST_BRANCH:-$BRANCHLESS_TARGET_BRANCH}
+
+# OpenStack Server Components
+CINDER_REPO=${CINDER_REPO:-${GIT_BASE}/openstack/cinder.git}
+CINDER_BRANCH=${CINDER_BRANCH:-$TARGET_BRANCH}
+GLANCE_REPO=${GLANCE_REPO:-${GIT_BASE}/openstack/glance.git}
+GLANCE_BRANCH=${GLANCE_BRANCH:-$TARGET_BRANCH}
+HORIZON_REPO=${HORIZON_REPO:-${GIT_BASE}/openstack/horizon.git}
+HORIZON_BRANCH=${HORIZON_BRANCH:-$TARGET_BRANCH}
+KEYSTONE_REPO=${KEYSTONE_REPO:-${GIT_BASE}/openstack/keystone.git}
+KEYSTONE_BRANCH=${KEYSTONE_BRANCH:-$TARGET_BRANCH}
+NEUTRON_REPO=${NEUTRON_REPO:-${GIT_BASE}/openstack/neutron.git}
+NEUTRON_BRANCH=${NEUTRON_BRANCH:-$TARGET_BRANCH}
+NOVA_REPO=${NOVA_REPO:-${GIT_BASE}/openstack/nova.git}
+NOVA_BRANCH=${NOVA_BRANCH:-$TARGET_BRANCH}
+SWIFT_REPO=${SWIFT_REPO:-${GIT_BASE}/openstack/swift.git}
+SWIFT_BRANCH=${SWIFT_BRANCH:-$TARGET_BRANCH}
+PLACEMENT_REPO=${PLACEMENT_REPO:-${GIT_BASE}/openstack/placement.git}
+PLACEMENT_BRANCH=${PLACEMENT_BRANCH:-$TARGET_BRANCH}
+
+# OpenStack Client Libraries
+GITREPO["openstackclient"]=${OPENSTACKCLIENT_REPO:-${GIT_BASE}/openstack/openstackclient.git}
+GITBRANCH["openstackclient"]=${OPENSTACKCLIENT_BRANCH:-$TARGET_BRANCH}
+GITDIR["openstackclient"]=$DEST/openstackclient
+GITREPO["cinderclient"]=${CINDERCLIENT_REPO:-${GIT_BASE}/openstack/cinderclient.git}
+GITBRANCH["cinderclient"]=${CINDERCLIENT_BRANCH:-$TARGET_BRANCH}
+GITREPO["glanceclient"]=${GLANCECLIENT_REPO:-${GIT_BASE}/openstack/glanceclient.git}
+GITBRANCH["glanceclient"]=${GLANCECLIENT_BRANCH:-$TARGET_BRANCH}
+GITREPO["keystoneauth"]=${KEYSTONEAUTH_REPO:-${GIT_BASE}/openstack/keystoneauth.git}
+GITBRANCH["keystoneauth"]=${KEYSTONEAUTH_BRANCH:-$TARGET_BRANCH}
+GITREPO["keystoneclient"]=${KEYSTONECLIENT_REPO:-${GIT_BASE}/openstack/keystoneclient.git}
+GITBRANCH["keystoneclient"]=${KEYSTONECLIENT_BRANCH:-$TARGET_BRANCH}
+GITREPO["neutronclient"]=${NEUTRONCLIENT_REPO:-${GIT_BASE}/openstack/neutronclient.git}
+GITBRANCH["neutronclient"]=${NEUTRONCLIENT_BRANCH:-$TARGET_BRANCH}
+GITREPO["novaclient"]=${NOVACLIENT_REPO:-${GIT_BASE}/openstack/novaclient.git}
+GITBRANCH["novaclient"]=${NOVACLIENT_BRANCH:-$TARGET_BRANCH}
+GITREPO["swiftclient"]=${SWIFTCLIENT_REPO:-${GIT_BASE}/openstack/swiftclient.git}
+GITBRANCH["swiftclient"]=${SWIFTCLIENT_BRANCH:-$TARGET_BRANCH}
+
+# Oslo Libraries
+GITREPO["oslo.cache"]=${OSLOCACHE_REPO:-${GIT_BASE}/openstack/oslo.cache.git}
+GITBRANCH["oslo.cache"]=${OSLOCACHE_BRANCH:-$TARGET_BRANCH}
+GITREPO["oslo.config"]=${OSLOCFG_REPO:-${GIT_BASE}/openstack/oslo.config.git}
+GITBRANCH["oslo.config"]=${OSLOCFG_BRANCH:-$TARGET_BRANCH}
+GITREPO["oslo.db"]=${OSLODB_REPO:-${GIT_BASE}/openstack/oslo.db.git}
+GITBRANCH["oslo.db"]=${OSLODB_BRANCH:-$TARGET_BRANCH}
+GITREPO["oslo.messaging"]=${OSLOMSG_REPO:-${GIT_BASE}/openstack/oslo.messaging.git}
+GITBRANCH["oslo.messaging"]=${OSLOMSG_BRANCH:-$TARGET_BRANCH}
+
+# Images
+CIRROS_VERSION=${CIRROS_VERSION:-0.6.2}
+CIRROS_ARCH=${CIRROS_ARCH:-x86_64}
+DOWNLOAD_DEFAULT_IMAGES=True
+DEFAULT_IMAGE_NAME=${DEFAULT_IMAGE_NAME:-cirros-${CIRROS_VERSION}-${CIRROS_ARCH}-disk}
+IMAGE_URLS="http://download.cirros-cloud.net/${CIRROS_VERSION}/cirros-${CIRROS_VERSION}-${CIRROS_ARCH}-disk.img"
+
+# etcd3 configuration
+ETCD_VERSION=${ETCD_VERSION:-v3.5.12}
+ETCD_ARCH=${ETCD_ARCH:-amd64}
+ETCD_DOWNLOAD_URL=${ETCD_DOWNLOAD_URL:-https://github.com/etcd-io/etcd/releases/download}
+ETCD_NAME=etcd-$ETCD_VERSION-linux-$ETCD_ARCH
+ETCD_DOWNLOAD_FILE=$ETCD_NAME.tar.gz
+ETCD_DOWNLOAD_LOCATION=$ETCD_DOWNLOAD_URL/$ETCD_VERSION/$ETCD_DOWNLOAD_FILE
+
+# Network configuration
+PRIVATE_NETWORK_NAME=${PRIVATE_NETWORK_NAME:-private}
+PUBLIC_NETWORK_NAME=${PUBLIC_NETWORK_NAME:-public}
+SERVICE_PROTOCOL=${SERVICE_PROTOCOL:-http}
+SERVICE_IP_VERSION=4
+SERVICE_HOST=${SERVICE_HOST:-$HOST_IP}
+SERVICE_LOCAL_HOST=${SERVICE_LOCAL_HOST:-127.0.0.1}
+SERVICE_LISTEN_ADDRESS=${SERVICE_LISTEN_ADDRESS:-0.0.0.0}
+
+# Service timeouts
+SERVICE_TIMEOUT=${SERVICE_TIMEOUT:-60}
+NOVA_READY_TIMEOUT=${NOVA_READY_TIMEOUT:-$SERVICE_TIMEOUT}
+SERVICE_GRACEFUL_SHUTDOWN_TIMEOUT=${SERVICE_GRACEFUL_SHUTDOWN_TIMEOUT:-5}
+WORKER_TIMEOUT=${WORKER_TIMEOUT:-90}
+
+# Logging
+LOGDIR=$DEST/logs
+SCREEN_LOGDIR=$LOGDIR
+LOGFILE=$LOGDIR/devstack.log
